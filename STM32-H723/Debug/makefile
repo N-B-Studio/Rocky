@@ -60,8 +60,8 @@ all: main-build
 main-build: rocky.elf secondary-outputs
 
 # Tool invocations
-rocky.elf rocky.map: $(OBJS) $(USER_OBJS) D:\z-code\STM32CubeIDE\rocky\STM32H723VGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "rocky.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m7 -T"D:\z-code\STM32CubeIDE\rocky\STM32H723VGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="rocky.map" -Wl,--gc-sections -static -u_printf_float --specs=nano.specs -mfpu=fpv5-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+rocky.elf rocky.map: $(OBJS) $(USER_OBJS) D:\z-code\STM32CubeIDE\Rocky\STM32-H723\STM32H723VGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "rocky.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m7 -T"D:\z-code\STM32CubeIDE\Rocky\STM32-H723\STM32H723VGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="rocky.map" -Wl,--gc-sections -static -u_printf_float --specs=nano.specs -mfpu=fpv5-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

@@ -138,7 +138,7 @@ static int jc_enter_closed_loop(FDCAN_HandleTypeDef *hcan, uint8_t node_id)
     return fdcanx_send_data(hcan, jc_tx_id(node_id), d, 8);
 }
 
-// mode: 4 = 位置直通 (你确认过)
+// mode: 4 = 位置直通 
 static int jc_set_mode(FDCAN_HandleTypeDef *hcan, uint8_t node_id, uint16_t mode)
 {
     // 2B 00 60 00 00 mm 00 00
@@ -156,6 +156,121 @@ static int jc_set_abs_pos_deg(FDCAN_HandleTypeDef *hcan, uint8_t node_id, float 
     return fdcanx_send_data(hcan, jc_tx_id(node_id), d, 8);
 }
 
+// 0=力矩模式，4=位置直通模式
+static int jc_set_torque_nm(FDCAN_HandleTypeDef *hcan, uint8_t node_id, float torque_nm)
+{
+    // 文档：扭矩寄存器 0x0020，放大 100 倍
+    int16_t v = (int16_t)(torque_nm * 100.0f);
+
+    uint8_t d[8] = {0x2B, 0x00, 0x20, 0x00, 0, 0, 0, 0};
+
+    d[4] = (uint8_t)((v >> 8) & 0xFF);
+    d[5] = (uint8_t)(v & 0xFF);
+
+    return fdcanx_send_data(hcan, jc_tx_id(node_id), d, 8);
+}
+static int jc_set_speed_rpm(FDCAN_HandleTypeDef *hcan, uint8_t node_id, float rpm)
+{
+    // 文档：速度寄存器 0x0021，rpm * 100
+    int32_t v = (int32_t)(rpm * 100.0f);
+
+    uint8_t d[8] = {0x23, 0x00, 0x21, 0x00, 0, 0, 0, 0};
+    be_i32(&d[4], v);
+
+    return fdcanx_send_data(hcan, jc_tx_id(node_id), d, 8);
+}
+
+static int jc_set_low_speed_rpm(FDCAN_HandleTypeDef *hcan, uint8_t node_id, float rpm)
+{
+    // 文档：低速寄存器 0x0027，rpm * 100，2字节
+    int16_t v = (int16_t)(rpm * 100.0f);
+
+    uint8_t d[8] = {0x2B, 0x00, 0x27, 0x00, 0, 0, 0, 0};
+
+    d[4] = (uint8_t)((v >> 8) & 0xFF);
+    d[5] = (uint8_t)(v & 0xFF);
+
+    return fdcanx_send_data(hcan, jc_tx_id(node_id), d, 8);
+}
+// 读模式寄存器，测试用
+static int jc_read_mode(FDCAN_HandleTypeDef *hcan, uint8_t node_id)
+{
+    // 读控制模式寄存器 0x0060
+    uint8_t d[8] = {0x4B, 0x00, 0x60, 0x00, 0, 0, 0, 0};
+    return fdcanx_send_data(hcan, jc_tx_id(node_id), d, 8);
+}
+static int jc_idle(FDCAN_HandleTypeDef *hcan, uint8_t node_id)
+{
+    // 2B 00 A0 00 00 01 00 00
+    uint8_t d[8] = {0x2B, 0x00, 0xA0, 0x00, 0x00, 0x01, 0x00, 0x00};
+    return fdcanx_send_data(hcan, jc_tx_id(node_id), d, 8);
+}
+
+static int jc_read_speed(FDCAN_HandleTypeDef *hcan, uint8_t node_id)
+{
+    // 读实时速度 0x0006
+    uint8_t d[8] = {0x43, 0x00, 0x06, 0x00, 0, 0, 0, 0};
+    return fdcanx_send_data(hcan, jc_tx_id(node_id), d, 8);
+}
+
+static int jc_read_position(FDCAN_HandleTypeDef *hcan, uint8_t node_id)
+{
+    // 读实时位置 0x0008
+    uint8_t d[8] = {0x43, 0x00, 0x08, 0x00, 0, 0, 0, 0};
+    return fdcanx_send_data(hcan, jc_tx_id(node_id), d, 8);
+}
+
+static int jc_read_current(FDCAN_HandleTypeDef *hcan, uint8_t node_id)
+{
+    // 读母线电流 0x0005
+    uint8_t d[8] = {0x4B, 0x00, 0x05, 0x00, 0, 0, 0, 0};
+    return fdcanx_send_data(hcan, jc_tx_id(node_id), d, 8);
+}
+
+static int jc_read_error(FDCAN_HandleTypeDef *hcan, uint8_t node_id)
+{
+    // 读错误码 0x000C
+    uint8_t d[8] = {0x43, 0x00, 0x0C, 0x00, 0, 0, 0, 0};
+    return fdcanx_send_data(hcan, jc_tx_id(node_id), d, 8);
+}
+
+static void torque_step_test(uint8_t node_id, float tq, uint32_t hold_ms)
+{
+    logf_uart1("[TQ] node=%d tq=%.2fNm hold=%lums\r\n", node_id, tq, hold_ms);
+
+    jc_set_torque_nm(&hfdcan1, node_id, tq);
+
+    uint32_t t0 = HAL_GetTick();
+    uint32_t last_read = 0;
+
+    while ((HAL_GetTick() - t0) < hold_ms)
+    {
+        uint32_t now = HAL_GetTick();
+
+        // 每100ms请求一次状态。需要你用Canable/candump看0x581回复
+        if ((now - last_read) >= 100)
+        {
+            last_read = now;
+
+            jc_read_speed(&hfdcan1, node_id);
+            HAL_Delay(2);
+
+            jc_read_position(&hfdcan1, node_id);
+            HAL_Delay(2);
+
+            jc_read_current(&hfdcan1, node_id);
+            HAL_Delay(2);
+
+            jc_read_error(&hfdcan1, node_id);
+            HAL_Delay(2);
+        }
+
+        HAL_Delay(1);
+    }
+
+    jc_set_torque_nm(&hfdcan1, node_id, 0.0f);
+    HAL_Delay(500);
+}
 static void fatal(const char *msg)
 {
     led_red();
@@ -227,40 +342,140 @@ int main(void)
   gimbal_enable(1);
   HAL_Delay(500);
 
+
+
+  // node1/2: torque mode for balance wheels
+  /* node3: position passthrough for head
+  if (jc_set_mode(&hfdcan1, NODE_LEFT_WHEEL,  0) != 0) fatal("torque mode node1");
+  HAL_Delay(100);
+
+  if (jc_set_mode(&hfdcan1, NODE_RIGHT_WHEEL, 0) != 0) fatal("torque mode node2");
+  HAL_Delay(100);
+
+  if (jc_set_mode(&hfdcan1, NODE_NECK,        4) != 0) fatal("position mode node3");
+  HAL_Delay(100);
+
   // closed loop + mode=4 (position passthrough)
-  log_uart1("[INIT] closed-loop + mode=4 nodes 1/2/3\r\n");
+  log_uart1("[INIT] node1/2 torque mode, node3 position mode\r\n");
   if (jc_enter_closed_loop(&hfdcan1, NODE_LEFT_WHEEL)  != 0) fatal("closed_loop node1");
+  HAL_Delay(20);
   if (jc_enter_closed_loop(&hfdcan1, NODE_RIGHT_WHEEL) != 0) fatal("closed_loop node2");
+  HAL_Delay(20);
   if (jc_enter_closed_loop(&hfdcan1, NODE_NECK)        != 0) fatal("closed_loop node3");
   HAL_Delay(20);
-
-  if (jc_set_mode(&hfdcan1, NODE_LEFT_WHEEL,  4) != 0) fatal("mode4 node1");
-  if (jc_set_mode(&hfdcan1, NODE_RIGHT_WHEEL, 4) != 0) fatal("mode4 node2");
-  if (jc_set_mode(&hfdcan1, NODE_NECK,        4) != 0) fatal("mode4 node3");
-  HAL_Delay(20);
-
   // start at 0 deg - 脖子固定在零位
-  jc_set_abs_pos_deg(&hfdcan1, NODE_NECK, 0.0f);
+  //jc_set_abs_pos_deg(&hfdcan1, NODE_NECK, 0.0f);
   HAL_Delay(20);
   log_uart1("[INIT] neck initialized to 0deg\r\n");
 
   led_green();
   log_uart1("[OK] running 1kHz IMU->CAN\r\n");
+  
+  jc_read_mode(&hfdcan1, NODE_LEFT_WHEEL);
+  HAL_Delay(50);
+
+  jc_read_mode(&hfdcan1, NODE_RIGHT_WHEEL);
+  HAL_Delay(50);
+
+  jc_read_mode(&hfdcan1, NODE_NECK);
+  HAL_Delay(50);
+
+  */
+  log_uart1("[INIT] single node torque mode test\r\n");
+
+  // 先让1号空闲
+  jc_idle(&hfdcan1, 1);
+  HAL_Delay(200);
+
+  // 切到mode0力矩模式
+  jc_set_mode(&hfdcan1, 1, 0);
+  HAL_Delay(200);
+
+  // 读一下模式。你需要用Canable/candump看0x581返回
+  jc_read_mode(&hfdcan1, 1);
+  HAL_Delay(100);
+
+  // 进入闭环
+  jc_enter_closed_loop(&hfdcan1, 1);
+  HAL_Delay(300);
+
+  // 再读错误、速度、位置、电流
+  jc_read_error(&hfdcan1, 1);
+  HAL_Delay(50);
+  jc_read_speed(&hfdcan1, 1);
+  HAL_Delay(50);
+  jc_read_position(&hfdcan1, 1);
+  HAL_Delay(50);
+  jc_read_current(&hfdcan1, 1);
+  HAL_Delay(50);
+
+  log_uart1("[INIT] node1 mode0 closed-loop done\r\n");
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  uint32_t last_log_ms = HAL_GetTick();
-  static float cmd_pitch_filt = 0.0f;
-  static const float cmd_alpha = 0.05f; // 0.02~0.1 之间调，越小越稳越慢
+  uint32_t last_50ms_log_ms = HAL_GetTick();
+  static const float KP = 0.03f;
+  static const float KD = 0.008f;
+  static const float KI = 0.0f;
 
-  static const float max_speed_dps = 120.0f; // 最大输出速度 deg/s，先试 60~180
+  static const float MAX_TORQUE_NM = 0.8f;
+  static const float MAX_TILT_DEG = 35.0f;
 
+  static float pitch_base_deg = 0.0f;     // 上电时手扶直立校准
+  static float gyro_bias_dps  = 0.0f;
+  static float pitch_i = 0.0f;
+  static uint8_t calibrated = 0;
+  static uint16_t calib_cnt = 0;
+  static float pitch_sum = 0.0f;
+  static float gyro_sum = 0.0f;
+  static uint8_t head_div = 0;
 
   float gyro[3], accel[3], temp = 0.0f;
   const float alpha = 0.98f;
-  while (1)
+log_uart1("[TEST] MODE0 torque ramp node1\r\n");
+
+while (1)
+{
+    // 先确保还是mode0
+    jc_idle(&hfdcan1, 1);
+    HAL_Delay(200);
+
+    jc_set_mode(&hfdcan1, 1, 0);
+    HAL_Delay(200);
+
+    jc_enter_closed_loop(&hfdcan1, 1);
+    HAL_Delay(300);
+
+    log_uart1("[PHASE A] positive torque ramp\r\n");
+
+    torque_step_test(1, 0.05f, 1500);
+    torque_step_test(1, 0.10f, 1500);
+    torque_step_test(1, 0.15f, 1500);
+    torque_step_test(1, 0.20f, 1500);
+    torque_step_test(1, 0.30f, 1500);
+    torque_step_test(1, 0.40f, 1500);
+    torque_step_test(1, 0.50f, 1500);
+
+    jc_set_torque_nm(&hfdcan1, 1, 0.0f);
+    HAL_Delay(2000);
+
+    log_uart1("[PHASE B] negative torque ramp\r\n");
+
+    torque_step_test(1, -0.05f, 1500);
+    torque_step_test(1, -0.10f, 1500);
+    torque_step_test(1, -0.15f, 1500);
+    torque_step_test(1, -0.20f, 1500);
+    torque_step_test(1, -0.30f, 1500);
+    torque_step_test(1, -0.40f, 1500);
+    torque_step_test(1, -0.50f, 1500);
+
+    jc_set_torque_nm(&hfdcan1, 1, 0.0f);
+    HAL_Delay(3000);
+
+   /*
+    while (1)
   {
 	  if (!loop_1khz_flag) continue;
 	      loop_1khz_flag = 0;
@@ -277,47 +492,99 @@ int main(void)
 	      float ay = accel[1];
 	      float az = accel[2];
 
-	      // 2) accel angle
-	      float pitch_acc = atan2f(-ay, sqrtf(ax*ax + az*az)) * RAD2DEG;
-
-      pitch_deg = alpha * (pitch_deg + gx * dt) + (1.0f - alpha) * pitch_acc;
-
       // 4) command = balance control based on pitch (stabilize)
 
+      uint32_t ms = HAL_GetTick();
 
-// 5) send to balance car (1kHz)
-      // 左轮和右轮做平衡控制，脖子保持零位
-      static uint8_t can_div = 0;
-      can_div++;
-      if (can_div >= 5) {   // 1kHz / 5 = 200Hz
-          can_div = 0;
-          cmd_pitch_filt += cmd_alpha * (cmd_pitch_deg - cmd_pitch_filt);
-          
-          // 左轮 = +cmd_pitch（前倾->前进）
-          if (jc_set_abs_pos_deg(&hfdcan1, NODE_LEFT_WHEEL, cmd_pitch_filt) != 0)
-              fatal("tx node1 (left_wheel)");
-          
-          // 右轮 = -cmd_pitch（前倾->前进，反向转）
-          if (jc_set_abs_pos_deg(&hfdcan1, NODE_RIGHT_WHEEL, -cmd_pitch_filt) != 0)
-              fatal("tx node2 (right_wheel)");
+      float pitch_acc = atan2f(-ay, sqrtf(ax * ax + az * az)) * RAD2DEG;
+
+      // 先假设 gx 是 pitch gyro
+      float gyro_pitch = -gx;
+
+      pitch_deg = alpha * (pitch_deg + gyro_pitch * dt)
+                + (1.0f - alpha) * pitch_acc;
+
+      // 上电手扶直立校准 1 秒
+      if (!calibrated)
+      {
+          pitch_sum += pitch_deg;
+          gyro_sum  += gyro_pitch;
+          calib_cnt++;
+
+          if (calib_cnt >= 1000)
+          {
+              pitch_base_deg = pitch_sum / 1000.0f;
+              gyro_bias_dps  = gyro_sum  / 1000.0f;
+              calibrated = 1;
+
+              logf_uart1("[CAL] pitch_base=%.2f gyro_bias=%.2f\r\n",
+                        pitch_base_deg, gyro_bias_dps);
+          }
+
+          jc_set_torque_nm(&hfdcan1, 1, 0.0f);
+          jc_set_torque_nm(&hfdcan1, 2, 0.0f);
+          continue;
       }
 
-      // 1Hz log
-      uint32_t now = HAL_GetTick();
-      if ((now - last_log_ms) >= 1000)
-      {
-         last_log_ms = now;
-          int32_t pitch_x100 = (int32_t)(cmd_pitch_deg * 100.0f);
-          int32_t gyro_x100 = (int32_t)(gyro[0] * 100.0f);  // gx = pitch gyro
+      float pitch_err = pitch_deg - pitch_base_deg;
+      float gyro_rate = gyro_pitch - gyro_bias_dps;
 
-          logf_uart1("pitch=%ld (x0.01) gyro_x=%ld (x0.01)\r\n", (long)pitch_x100, (long)gyro_x100);
-	      }
+      if (fabsf(pitch_err) > MAX_TILT_DEG)
+      {
+          pitch_i = 0.0f;
+
+          jc_set_torque_nm(&hfdcan1, 1, 0.0f);
+          jc_set_torque_nm(&hfdcan1, 2, 0.0f);
+          continue;
+      }
+
+      pitch_i += pitch_err * dt;
+
+      if (pitch_i > 20.0f) pitch_i = 20.0f;
+      if (pitch_i < -20.0f) pitch_i = -20.0f;
+
+      float torque_cmd =
+            KP * pitch_err
+          + KD * gyro_rate
+          + KI * pitch_i;
+
+      if (torque_cmd >  MAX_TORQUE_NM) torque_cmd =  MAX_TORQUE_NM;
+      if (torque_cmd < -MAX_TORQUE_NM) torque_cmd = -MAX_TORQUE_NM;
+
+      // 你说轮子方向是反的，所以这里先反号
+      int r1 = jc_set_torque_nm(&hfdcan1, 1, -torque_cmd);
+      int r2 = jc_set_torque_nm(&hfdcan1, 2,  torque_cmd);
+
+      // 3号头部 50Hz
+      head_div++;
+      if (head_div >= 20)
+      {
+          head_div = 0;
+          float head_pos = 15.0f * sinf(ms * 0.001f * 0.5f);
+          jc_set_abs_pos_deg(&hfdcan1, 3, head_pos);
+      }
+
+      uint32_t now = HAL_GetTick();
+      if ((now - last_50ms_log_ms) >= 100)
+      {
+          last_50ms_log_ms = now;
+          logf_uart1(
+            "ACC %.3f %.3f %.3f | GYRO %.3f %.3f %.3f | Pacc %.2f P %.2f E %.2f Gr %.2f T %.3f r %d %d\r\n",
+            ax, ay, az,
+            gx, gy, gz,
+            pitch_acc, pitch_deg, pitch_err, gyro_rate,
+            torque_cmd, r1, r2
+          );
+      }
+          
+      */
 
 
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
   }
+  
   /* USER CODE END 3 */
 }
 
