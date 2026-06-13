@@ -1,0 +1,17 @@
+../Core/Src/main.c:79:20:led_yellow	1
+../Core/Src/main.c:80:20:led_red	1
+../Core/Src/main.c:81:20:led_green	1
+../Core/Src/main.c:86:13:log_uart1	1
+../Core/Src/main.c:91:13:logf_uart1	2
+../Core/Src/main.c:114:20:gimbal_enable	1
+../Core/Src/main.c:125:24:jc_tx_id	1
+../Core/Src/main.c:127:20:be_u16	1
+../Core/Src/main.c:131:20:be_i32	1
+../Core/Src/main.c:138:12:jc_enter_closed_loop	1
+../Core/Src/main.c:146:12:jc_set_mode	1
+../Core/Src/main.c:154:12:jc_set_abs_pos_deg	1
+../Core/Src/main.c:163:13:fatal	1
+../Core/Src/main.c:178:5:main	8
+../Core/Src/main.c:348:6:SystemClock_Config	4
+../Core/Src/main.c:403:6:HAL_TIM_PeriodElapsedCallback	2
+../Core/Src/main.c:417:6:Error_Handler	1

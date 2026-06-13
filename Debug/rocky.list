@@ -1,0 +1,28 @@
+
+rocky.elf:     file format elf32-littlearm
+
+Sections:
+Idx Name          Size      VMA       LMA       File off  Algn
+  0 .isr_vector   000002cc  08000000  08000000  00001000  2**0
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  1 .text         0000fb8c  080002d0  080002d0  000012d0  2**4
+                  CONTENTS, ALLOC, LOAD, READONLY, CODE
+  2 .rodata       0000056c  0800fe60  0800fe60  00010e60  2**3
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  3 .ARM          00000008  080103cc  080103cc  000113cc  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  4 .init_array   00000004  080103d4  080103d4  000113d4  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  5 .fini_array   00000004  080103d8  080103d8  000113d8  2**2
+                  CONTENTS, ALLOC, LOAD, READONLY, DATA
+  6 .data         00000210  24000000  080103dc  00012000  2**2
+                  CONTENTS, ALLOC, LOAD, DATA
+  7 .bss          00000704  24000210  080105ec  00012210  2**2
+                  ALLOC
+  8 ._user_heap_stack 00000a04  24000914  080105ec  00012914  2**0
+                  ALLOC
+  9 .ARM.attributes 0000002e  00000000  00000000  00012210  2**0
+                  CONTENTS, READONLY
+10 .debug_info   00021d36  00000000  00000000  0001223e  2**0
+                  CONTENTS, READONLY, DEBUGGING, OCTETS
+... (truncated disassembly omitted)
