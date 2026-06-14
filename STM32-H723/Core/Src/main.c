@@ -423,8 +423,8 @@ log_uart1("[INIT] motors ready\r\n");
   
   // 直接映射：pitch_deg -> torque_nm
   // 调整这个系数来改变灵敏度
-  static const float PITCH_TO_TORQUE = 0.02f;  // pitch度数 * 这个系数 = 扭矩Nm
-  static const float MAX_TORQUE_NM = 0.8f;
+  static const float PITCH_TO_TORQUE = 0.01f;  // pitch度数 * 这个系数 = 扭矩Nm
+  static const float MAX_TORQUE_NM = 0.4f;
 
   while (1)
   {
@@ -457,34 +457,30 @@ log_uart1("[INIT] motors ready\r\n");
     float torque_cmd = pitch_deg * PITCH_TO_TORQUE;
     
     // 限幅
-    if (torque_cmd >  MAX_TORQUE_NM) torque_cmd =  MAX_TORQUE_NM;
-    if (torque_cmd < -MAX_TORQUE_NM) torque_cmd = -MAX_TORQUE_NM;
+    //if (torque_cmd >  MAX_TORQUE_NM) torque_cmd =  MAX_TORQUE_NM;
+    //if (torque_cmd < -MAX_TORQUE_NM) torque_cmd = -MAX_TORQUE_NM;
+    if (torque_cmd > 0.4f)
+        torque_cmd = 0.4f;
 
+    if (torque_cmd < -0.4f)
+        torque_cmd = -0.4f;
     // 直接设置电机扭矩
     int r1 = jc_set_torque_nm(&hfdcan1, NODE_LEFT_WHEEL, -torque_cmd);
     int r2 = jc_set_torque_nm(&hfdcan1, NODE_RIGHT_WHEEL, torque_cmd);
 
-    // 3号电机低频固定到0度，避免占CAN
     neck_div++;
     if (neck_div >= 20)
     {
         neck_div = 0;
         jc_set_abs_pos_deg(&hfdcan1, NODE_NECK, 0.0f);
     }
-
     uint32_t now = HAL_GetTick();
     if ((now - last_50ms_log_ms) >= 100)
     {
         last_50ms_log_ms = now;
 
-        logf_uart1(
-            "P %.2f T %.3f | Roll %.1f | r %d %d\r\n",
-            pitch_deg,
-            torque_cmd,
-            roll_acc,
-            r1,
-            r2
-          );
+        logf_uart1(  "P %.2f T %.3f | Roll %.1f | r %d %d\r\n",
+            pitch_deg, torque_cmd, roll_acc, r1, r2 );
       }
 
 
