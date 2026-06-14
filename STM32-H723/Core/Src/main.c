@@ -423,9 +423,23 @@ log_uart1("[INIT] motors ready\r\n");
   
   // 直接映射：pitch_deg -> torque_nm
   // 调整这个系数来改变灵敏度
-  static const float PITCH_TO_TORQUE = 0.01f;  // pitch度数 * 这个系数 = 扭矩Nm
-  static const float MAX_TORQUE_NM = 0.4f;
+    static const float KP = 0.0028f;
+    static const float KD = 0.0030f;
+    static const float KI = 0.000f; // KI = 0.00005f;
 
+    static const float MAX_TORQUE_NM = 0.5f;
+    static const float MAX_TILT_DEG = 45.0f;
+
+    static const float PITCH_DEADBAND_DEG = 0.8f;
+    static const float TORQUE_DEADBAND_NM = 0.015f;
+    static const float I_LIMIT = 20.0f;
+
+    static float pitch_i = 0.0f;
+    // Calibrated:
+    static float pitch_base_deg = 0.0f;
+    static float pitch_sum = 0.0f;
+    static uint16_t calib_cnt = 0;
+    static uint8_t calibrated = 0;
   while (1)
   {
 	  if (!loop_1khz_flag) continue;
@@ -454,16 +468,77 @@ log_uart1("[INIT] motors ready\r\n");
       + (1.0f - alpha) * pitch_acc;
 
     // 直接用 pitch_deg 映射到扭矩，无校准无PID
-    float torque_cmd = pitch_deg * PITCH_TO_TORQUE;
-    
-    // 限幅
-    //if (torque_cmd >  MAX_TORQUE_NM) torque_cmd =  MAX_TORQUE_NM;
-    //if (torque_cmd < -MAX_TORQUE_NM) torque_cmd = -MAX_TORQUE_NM;
-    if (torque_cmd > 0.4f)
-        torque_cmd = 0.4f;
+    //float torque_cmd = pitch_deg * KP;
+    if (!calibrated)
+    {
+        pitch_sum += pitch_deg;
+        calib_cnt++;
 
-    if (torque_cmd < -0.4f)
-        torque_cmd = -0.4f;
+        jc_set_torque_nm(&hfdcan1, NODE_LEFT_WHEEL, 0.0f);
+        jc_set_torque_nm(&hfdcan1, NODE_RIGHT_WHEEL, 0.0f);
+
+        if (calib_cnt >= 1000)
+        {
+            pitch_base_deg = pitch_sum / 1000.0f;
+            calibrated = 1;
+
+            logf_uart1("[CAL] pitch_base=%.2f\r\n", pitch_base_deg);
+        }
+
+        continue;
+    }
+
+    float pitch_err = pitch_deg - pitch_base_deg;
+
+    if (fabsf(pitch_err) > MAX_TILT_DEG)
+    {
+        pitch_i = 0.0f;
+
+        jc_set_torque_nm(&hfdcan1, NODE_LEFT_WHEEL, 0.0f);
+        jc_set_torque_nm(&hfdcan1, NODE_RIGHT_WHEEL, 0.0f);
+        continue;
+    }
+
+    float e = pitch_err;
+
+    // angle deadband
+    if (fabsf(e) < PITCH_DEADBAND_DEG)
+    {
+        e = 0.0f;
+    }
+    else if (e > 0.0f)
+    {
+        e -= PITCH_DEADBAND_DEG;
+    }
+    else
+    {
+        e += PITCH_DEADBAND_DEG;
+    }
+
+    // I term
+    pitch_i += e * dt;
+
+    if (pitch_i >  I_LIMIT) pitch_i =  I_LIMIT;
+    if (pitch_i < -I_LIMIT) pitch_i = -I_LIMIT;
+
+    // D term: gyro already gives pitch angular velocity
+    float pitch_d = pitch_rate;
+
+    // PID output
+    float torque_cmd =
+        KP * e
+        + KI * pitch_i
+        + KD * pitch_d;
+
+    // small torque deadband
+    if (fabsf(torque_cmd) < TORQUE_DEADBAND_NM)
+    {
+        torque_cmd = 0.0f;
+    }
+    // 限幅
+    if (torque_cmd >  MAX_TORQUE_NM) torque_cmd =  MAX_TORQUE_NM;
+    if (torque_cmd < -MAX_TORQUE_NM) torque_cmd = -MAX_TORQUE_NM;
+    
     // 直接设置电机扭矩
     int r1 = jc_set_torque_nm(&hfdcan1, NODE_LEFT_WHEEL, -torque_cmd);
     int r2 = jc_set_torque_nm(&hfdcan1, NODE_RIGHT_WHEEL, torque_cmd);
@@ -479,9 +554,17 @@ log_uart1("[INIT] motors ready\r\n");
     {
         last_50ms_log_ms = now;
 
-        logf_uart1(  "P %.2f T %.3f | Roll %.1f | r %d %d\r\n",
-            pitch_deg, torque_cmd, roll_acc, r1, r2 );
-      }
+        logf_uart1(
+            "P %.2f E %.2f I %.2f D %.2f T %.3f | r %d %d\r\n",
+            pitch_deg,
+            pitch_err,
+            pitch_i,
+            pitch_d,
+            torque_cmd,
+            r1,
+            r2
+        );
+    }
 
 
     /* USER CODE END WHILE */
